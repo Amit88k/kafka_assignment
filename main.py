@@ -1,12 +1,12 @@
 from __future__ import print_function
+
+import json
 import pickle
 import os.path
 import sys
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-import kafka
-# from kafka.consumer import setKafkaConsumer
 from kafka import KafkaConsumer, KafkaProducer
 
 # If modifying these scopes, delete the file token.pickle.
@@ -16,7 +16,31 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 SAMPLE_SPREADSHEET_ID = '1IlC4uK0Sb3LTIrCEt30VzVaGovMs-vo8q3jaQdUkNrQ'
 SAMPLE_RANGE_NAME = 'sheet1!A:E'
 
-def main():
+
+def publish_message(producer_instance, topic_name, key, value):
+    try:
+        key_bytes = bytes(key, encoding='utf-8')
+        value_bytes = bytes(value, encoding='utf-8')
+        producer_instance.send(topic_name, key=key_bytes, value=value_bytes)
+        producer_instance.flush()
+        print('Message published successfully.')
+    except Exception as ex:
+        print('Exception in publishing message')
+        print(str(ex))
+
+
+def connect_kafka_producer():
+    _producer = None
+    try:
+        _producer = KafkaProducer(bootstrap_servers=['localhost:9093'], api_version=(0, 10))
+    except Exception as ex:
+        print('Exception while connecting Kafka')
+        print(str(ex))
+    finally:
+        return _producer
+
+
+def read_spread_sheet():
     """Shows basic usage of the Sheets API.
     Prints values from a sample spreadsheet.
     """
@@ -46,24 +70,20 @@ def main():
     result = sheet.values().get(spreadsheetId=SAMPLE_SPREADSHEET_ID,range=SAMPLE_RANGE_NAME).execute()
     values = result.get('values', [])
 
-    topic = "topic2"
-    # kafka_consumer = KafkaConsumer(topic,
-    #                                auto_offset_reset='latest',
-    #                                bootstrap_servers=[kafka_endpoint],
-    #                                api_version=(0, 10),
-    #                                consumer_timeout_ms=-1
-    #                                )
-    kafka_producer = KafkaProducer(bootstrap_servers=['localhost:9092'], api_version=(0, 10,1))
+    topic_name = "topic2"
+    # kafka_producer = KafkaProducer(bootstrap_servers=['localhost:9092'], api_version=(0, 10,1))
+    producer = connect_kafka_producer()
     if not values:
         print('No data found.')
     else:
         for row in values:
             print('%s, %s' % (row[0], row[1]))
-            kafka_producer.send(topic, row)
+            message = {"Id" : row[0], "Name" : row[1]}
+            publish_message(producer, topic_name, "key", json.dumps(message))
 
 
 if __name__ == '__main__':
-    main()
+    read_spread_sheet()
     # client id: 30484477302-ph1ef33p37l5lq3vcv65cvlt3m01nijc.apps.googleusercontent.com
     # client secret: FNuLauZepFeABy4c1Lncw7LS
 
